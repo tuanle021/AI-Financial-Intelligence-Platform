@@ -1,5 +1,5 @@
 import pytest
-
+from app.models.asset_type import AssetType
 from app.models.instrument_code import InstrumentCode
 from app.services.instrument_service import (
     InstrumentService,
@@ -36,3 +36,29 @@ def test_list_instruments_returns_registered_definitions():
 
     assert InstrumentCode.GOLD_SPOT in codes
     assert InstrumentCode.GOLD_FUTURES in codes
+
+def test_service_returns_public_instrument_response():
+    service = InstrumentService()
+
+    response = service.resolve_instrument_response(
+        "XAUUSD"
+    )
+
+    assert response.code == InstrumentCode.GOLD_SPOT
+    assert response.display_symbol == "XAU/USD"
+    assert response.asset_type == AssetType.COMMODITY
+    assert response.supports_latest is True
+    assert response.supports_history is True
+
+def test_service_lists_public_instrument_responses():
+    service = InstrumentService()
+
+    responses = service.list_instrument_responses()
+
+    returned_codes = {
+        response.code
+        for response in responses
+    }
+
+    assert InstrumentCode.GOLD_SPOT in returned_codes
+    assert InstrumentCode.GOLD_FUTURES in returned_codes

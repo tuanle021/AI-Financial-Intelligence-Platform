@@ -6,7 +6,7 @@ from app.services.market_data import MarketDataService
 from app.models.market_interval import MarketInterval
 from app.schemas.market import HistoricalMarketDataRequest
 from app.providers.resolver import resolve_market_data_provider
-from app.services.instrument_service import instrument_service
+from app.services.instrument_service import InstrumentService, instrument_service
 
 def create_market_data_service(
     instrument_code: str,
@@ -181,3 +181,6 @@ def get_historical_market_data_request(
                 include_context=False,
             ),
         ) from error
+
+def get_instrument_service() -> InstrumentService:
+    return instrument_service

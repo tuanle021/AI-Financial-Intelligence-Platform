@@ -431,3 +431,55 @@ def test_generic_history_rejects_invalid_date_range():
         )
 
     assert response.status_code == 422
+
+def test_list_instruments():
+    response = client.get(
+        "/instruments"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert isinstance(data, list)
+
+    codes = {
+        instrument["code"]
+        for instrument in data
+    }
+
+    assert "XAUUSD" in codes
+    assert "GOLD_FUTURES" in codes
+
+def test_get_gold_spot_instrument():
+    response = client.get(
+        "/instruments/XAUUSD"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["code"] == "XAUUSD"
+    assert data["display_symbol"] == "XAU/USD"
+    assert data["asset_type"] == "commodity"
+    assert data["supports_latest"] is True
+    assert data["supports_history"] is True
+
+def test_get_instrument_is_case_insensitive():
+    response = client.get(
+        "/instruments/xauusd"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "XAUUSD"
+
+def test_get_unknown_instrument_returns_404():
+    response = client.get(
+        "/instruments/UNKNOWN"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Unsupported instrument: UNKNOWN"
+    )

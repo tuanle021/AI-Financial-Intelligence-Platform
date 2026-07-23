@@ -25,7 +25,10 @@ from app.schemas.market import (
     MarketPriceResponse,
 )
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/market",
+    tags=["Market"],
+)
 
 
 @router.get(
