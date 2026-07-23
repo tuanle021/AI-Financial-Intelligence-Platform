@@ -15,6 +15,16 @@ from app.api.dependencies import (
     get_gold_spot_historical_service
 )
 
+from app.api.dependencies import (
+    get_historical_market_data_request,
+    get_market_data_service,
+)
+from app.schemas.market import (
+    HistoricalMarketDataRequest,
+    HistoricalMarketDataResponse,
+    MarketPriceResponse,
+)
+
 router = APIRouter()
 
 
@@ -88,3 +98,30 @@ def get_gold_spot_history(
     ),
 ) -> HistoricalMarketDataResponse:
     return service.get_historical_data(request)
+
+@router.get(
+    "/{instrument_code}/latest",
+    response_model=MarketPriceResponse,
+)
+def get_latest_market_data(
+    service: MarketDataService = Depends(
+        get_market_data_service
+    ),
+) -> MarketPriceResponse:
+    return service.get_latest_price()
+
+@router.get(
+    "/{instrument_code}/history",
+    response_model=HistoricalMarketDataResponse,
+)
+def get_historical_market_data(
+    request: HistoricalMarketDataRequest = Depends(
+        get_historical_market_data_request
+    ),
+    service: MarketDataService = Depends(
+        get_market_data_service
+    ),
+) -> HistoricalMarketDataResponse:
+    return service.get_historical_data(
+        request
+    )

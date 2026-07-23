@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
-
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
     get_gold_futures_service,
     get_gold_spot_service,
     get_gold_futures_historical_service,
-    get_gold_spot_historical_service
+    get_gold_spot_historical_service,
+    get_market_data_service
 )
 from app.main import app
 from app.services.market_data import MarketDataService
@@ -283,3 +284,151 @@ def test_get_gold_spot_historical_data():
     assert data["currency"] == "USD"
     assert len(data["candles"]) == 1
     assert data["candles"][0]["volume"] is None
+
+def override_market_data_service(
+    instrument_code: str,
+) -> MarketDataService:
+    normalised_code = instrument_code.strip().upper()
+
+    if normalised_code == "XAUUSD":
+        return MarketDataService(
+            provider=MockSpotMarketDataProvider(),
+            instrument=GOLD_SPOT,
+        )
+
+    if normalised_code == "GOLD_FUTURES":
+        return MarketDataService(
+            provider=MockFuturesMarketDataProvider(),
+            instrument=GOLD_FUTURES,
+        )
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Unsupported instrument: {instrument_code}",
+    )
+
+def test_get_generic_gold_spot_latest():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/XAUUSD/latest"
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["symbol"] == "XAU/USD"
+    assert data["price"] == 4056.80
+    assert data["currency"] == "USD"
+    assert "timestamp" in data
+
+def test_get_generic_gold_futures_latest():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/GOLD_FUTURES/latest"
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["symbol"] == "GC=F"
+    assert data["price"] == 4097.20
+    assert data["currency"] == "USD"
+
+def test_generic_instrument_code_is_case_insensitive():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/xauusd/latest"
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["symbol"] == "XAU/USD"
+
+def test_get_generic_gold_spot_history():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/XAUUSD/history",
+            params={
+                "interval": "5m",
+                "start_time": "2026-07-14T10:00:00Z",
+                "end_time": "2026-07-14T11:00:00Z",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["symbol"] == "XAU/USD"
+    assert data["interval"] == "5m"
+    assert data["currency"] == "USD"
+    assert len(data["candles"]) == 1
+
+def test_generic_endpoint_rejects_unknown_instrument():
+    response = client.get(
+        "/market/UNKNOWN/latest"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Unsupported instrument: UNKNOWN"
+    )
+
+def test_generic_history_rejects_invalid_date_range():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/XAUUSD/history",
+            params={
+                "interval": "5m",
+                "start_time": "2026-07-14T12:00:00Z",
+                "end_time": "2026-07-14T11:00:00Z",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 422
