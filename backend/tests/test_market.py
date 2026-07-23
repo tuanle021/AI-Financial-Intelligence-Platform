@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-
 from app.api.dependencies import (
     get_gold_futures_service,
     get_gold_spot_service,
