@@ -16,24 +16,37 @@ from app.schemas.market import (
     MarketCandle
 )
 from app.instruments.definitions import (
+    EUR_USD,
+    GBP_USD,
     GOLD_FUTURES,
     GOLD_SPOT,
 )
 from app.models.instrument_definition import InstrumentDefinition
 from app.schemas.market import MarketPriceResponse
+from app.models.instrument_code import InstrumentCode
 
 
 client = TestClient(app)
 
 
-class MockSpotMarketDataProvider:
+class MockTwelveDataMarketDataProvider:
+    PRICES = {
+        InstrumentCode.GOLD_SPOT: 4056.80,
+        InstrumentCode.GBP_USD: 1.2935,
+        InstrumentCode.EUR_USD: 1.1724,
+    }
+
     def get_latest_price(
         self,
         instrument: InstrumentDefinition,
     ) -> MarketPriceResponse:
+        price = self.PRICES[
+            instrument.instrument.code
+        ]
+
         return MarketPriceResponse(
             symbol=instrument.provider_symbol,
-            price=4056.80,
+            price=price,
             currency=instrument.instrument.quote_asset or "USD",
             timestamp=datetime.now(timezone.utc),
         )
@@ -43,6 +56,10 @@ class MockSpotMarketDataProvider:
         instrument: InstrumentDefinition,
         request: HistoricalMarketDataRequest,
     ) -> HistoricalMarketDataResponse:
+        price = self.PRICES[
+            instrument.instrument.code
+        ]
+
         return HistoricalMarketDataResponse(
             symbol=instrument.provider_symbol,
             interval=request.interval,
@@ -51,18 +68,11 @@ class MockSpotMarketDataProvider:
                 MarketCandle(
                     symbol=instrument.provider_symbol,
                     interval=request.interval,
-                    timestamp=datetime(
-                        2026,
-                        7,
-                        14,
-                        10,
-                        0,
-                        tzinfo=timezone.utc,
-                    ),
-                    open=4055.20,
-                    high=4057.00,
-                    low=4054.90,
-                    close=4056.10,
+                    timestamp=request.start_time,
+                    open=price,
+                    high=price + 0.001,
+                    low=price - 0.001,
+                    close=price + 0.0005,
                     volume=None,
                 )
             ],
@@ -114,7 +124,7 @@ class MockFuturesMarketDataProvider:
 
 def override_gold_spot_service() -> MarketDataService:
     return MarketDataService(
-        provider=MockSpotMarketDataProvider(),
+        provider=MockTwelveDataMarketDataProvider(),
         instrument=GOLD_SPOT,
     )
 
@@ -127,7 +137,7 @@ def override_gold_futures_service() -> MarketDataService:
 
 def override_gold_spot_historical_service() -> MarketDataService:
     return MarketDataService(
-        provider=MockSpotMarketDataProvider(),
+        provider=MockTwelveDataMarketDataProvider(),
         instrument=GOLD_SPOT,
     )
 
@@ -135,6 +145,41 @@ def override_gold_futures_historical_service() -> MarketDataService:
     return MarketDataService(
         provider=MockFuturesMarketDataProvider(),
         instrument=GOLD_FUTURES,
+    )
+
+def override_market_data_service(
+    instrument_code: str,
+) -> MarketDataService:
+    normalised_code = instrument_code.strip().upper()
+
+    definitions = {
+        "XAUUSD": GOLD_SPOT,
+        "GOLD_FUTURES": GOLD_FUTURES,
+        "GBPUSD": GBP_USD,
+        "EURUSD": EUR_USD,
+    }
+
+    definition = definitions.get(
+        normalised_code
+    )
+
+    if definition is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Unsupported instrument: "
+                f"{instrument_code}"
+            ),
+        )
+
+    if definition == GOLD_FUTURES:
+        provider = MockFuturesMarketDataProvider()
+    else:
+        provider = MockTwelveDataMarketDataProvider()
+
+    return MarketDataService(
+        provider=provider,
+        instrument=definition,
     )
 
 
@@ -283,28 +328,6 @@ def test_get_gold_spot_historical_data():
     assert data["currency"] == "USD"
     assert len(data["candles"]) == 1
     assert data["candles"][0]["volume"] is None
-
-def override_market_data_service(
-    instrument_code: str,
-) -> MarketDataService:
-    normalised_code = instrument_code.strip().upper()
-
-    if normalised_code == "XAUUSD":
-        return MarketDataService(
-            provider=MockSpotMarketDataProvider(),
-            instrument=GOLD_SPOT,
-        )
-
-    if normalised_code == "GOLD_FUTURES":
-        return MarketDataService(
-            provider=MockFuturesMarketDataProvider(),
-            instrument=GOLD_FUTURES,
-        )
-
-    raise HTTPException(
-        status_code=404,
-        detail=f"Unsupported instrument: {instrument_code}",
-    )
 
 def test_get_generic_gold_spot_latest():
     app.dependency_overrides[
@@ -483,3 +506,87 @@ def test_get_unknown_instrument_returns_404():
     assert response.json()["detail"] == (
         "Unsupported instrument: UNKNOWN"
     )
+
+def test_list_instruments_includes_forex_pairs():
+    response = client.get(
+        "/instruments"
+    )
+
+    assert response.status_code == 200
+
+    codes = {
+        instrument["code"]
+        for instrument in response.json()
+    }
+
+    assert "GBPUSD" in codes
+    assert "EURUSD" in codes
+
+def test_get_gbp_usd_instrument():
+    response = client.get(
+        "/instruments/GBPUSD"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["code"] == "GBPUSD"
+    assert data["display_symbol"] == "GBP/USD"
+    assert data["asset_type"] == "forex"
+    assert data["base_asset"] == "GBP"
+    assert data["quote_asset"] == "USD"
+    assert data["supports_latest"] is True
+    assert data["supports_history"] is True
+
+def test_get_gbp_usd_latest():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/GBPUSD/latest"
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["symbol"] == "GBP/USD"
+    assert data["price"] == 1.2935
+    assert data["currency"] == "USD"
+    
+def test_get_eur_usd_history():
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+
+    try:
+        response = client.get(
+            "/market/EURUSD/history",
+            params={
+                "interval": "5m",
+                "start_time": "2026-07-22T10:00:00Z",
+                "end_time": "2026-07-22T11:00:00Z",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(
+            get_market_data_service,
+            None,
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["symbol"] == "EUR/USD"
+    assert data["interval"] == "5m"
+    assert data["currency"] == "USD"
+    assert len(data["candles"]) == 1

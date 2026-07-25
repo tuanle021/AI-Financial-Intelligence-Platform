@@ -58,7 +58,7 @@ def test_resolve_unsupported_instrument():
 def test_list_instruments_returns_all_registered_definitions():
     definitions = list_instrument_definitions()
 
-    assert len(definitions) == 2
+    assert len(definitions) == 4
 
     instrument_codes = {
         definition.instrument.code
@@ -68,4 +68,39 @@ def test_list_instruments_returns_all_registered_definitions():
     assert instrument_codes == {
         InstrumentCode.GOLD_SPOT,
         InstrumentCode.GOLD_FUTURES,
+        InstrumentCode.GBP_USD,
+        InstrumentCode.EUR_USD,
     }
+
+def test_resolve_gbp_usd_definition():
+    definition = resolve_instrument_definition(
+        "GBPUSD"
+    )
+
+    assert definition.instrument.code == (
+        InstrumentCode.GBP_USD
+    )
+    assert definition.instrument.asset_type == (
+        AssetType.FOREX
+    )
+    assert definition.provider_symbol == "GBP/USD"
+    assert definition.market_data_provider == (
+        "twelve_data"
+    )
+
+
+def test_resolve_eur_usd_definition():
+    definition = resolve_instrument_definition(
+        "eurusd"
+    )
+
+    assert definition.instrument.code == (
+        InstrumentCode.EUR_USD
+    )
+    assert definition.instrument.asset_type == (
+        AssetType.FOREX
+    )
+    assert definition.provider_symbol == "EUR/USD"
+    assert definition.market_data_provider == (
+        "twelve_data"
+    )

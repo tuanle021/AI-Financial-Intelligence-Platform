@@ -1,6 +1,8 @@
 import pytest
 
 from app.instruments.definitions import (
+    EUR_USD,
+    GBP_USD,
     GOLD_FUTURES,
     GOLD_SPOT,
 )
@@ -91,3 +93,22 @@ def test_resolver_rejects_unsupported_provider():
         resolve_market_data_provider(
             unsupported_definition
         )
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        GBP_USD,
+        EUR_USD,
+    ],
+)
+def test_resolver_returns_twelve_data_provider_for_forex(
+    definition: InstrumentDefinition,
+):
+    provider = resolve_market_data_provider(
+        definition
+    )
+
+    assert isinstance(
+        provider,
+        TwelveDataMarketDataProvider,
+    )

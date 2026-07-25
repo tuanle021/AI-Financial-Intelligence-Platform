@@ -1,6 +1,8 @@
 from app.instruments.definitions import (
     GOLD_FUTURES,
     GOLD_SPOT,
+    EUR_USD,
+    GBP_USD,
 )
 from app.models.instrument_code import InstrumentCode
 from app.models.instrument_definition import InstrumentDefinition
@@ -12,6 +14,8 @@ INSTRUMENT_REGISTRY: dict[
 ] = {
     InstrumentCode.GOLD_SPOT: GOLD_SPOT,
     InstrumentCode.GOLD_FUTURES: GOLD_FUTURES,
+    InstrumentCode.EUR_USD: EUR_USD,
+    InstrumentCode.GBP_USD: GBP_USD,
 }
 
 def get_instrument_definition(

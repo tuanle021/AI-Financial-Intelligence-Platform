@@ -36,3 +36,36 @@ GOLD_FUTURES = InstrumentDefinition(
     supports_history=True,
     supports_sentiment=True,
 )
+
+GBP_USD = InstrumentDefinition(
+    instrument=Instrument(
+        code=InstrumentCode.GBP_USD,
+        display_symbol="GBP/USD",
+        name="British Pound / US Dollar",
+        asset_type=AssetType.FOREX,
+        base_asset="GBP",
+        quote_asset="USD",
+    ),
+    market_data_provider="twelve_data",
+    provider_symbol="GBP/USD",
+    supports_latest=True,
+    supports_history=True,
+    supports_sentiment=False,
+)
+
+
+EUR_USD = InstrumentDefinition(
+    instrument=Instrument(
+        code=InstrumentCode.EUR_USD,
+        display_symbol="EUR/USD",
+        name="Euro / US Dollar",
+        asset_type=AssetType.FOREX,
+        base_asset="EUR",
+        quote_asset="USD",
+    ),
+    market_data_provider="twelve_data",
+    provider_symbol="EUR/USD",
+    supports_latest=True,
+    supports_history=True,
+    supports_sentiment=False,
+)
