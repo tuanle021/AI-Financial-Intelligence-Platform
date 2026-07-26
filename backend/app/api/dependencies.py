@@ -1,5 +1,13 @@
 from datetime import datetime
 
+from sqlalchemy.engine import Engine
+
+from app.database.engine import engine
+
+
+def get_database_engine() -> Engine:
+    return engine
+
 from fastapi import HTTPException, Query, status, Path
 from pydantic import ValidationError
 from app.services.market_data import MarketDataService
