@@ -3,7 +3,15 @@ from datetime import datetime
 from sqlalchemy.engine import Engine
 
 from app.database.engine import engine
+from fastapi import Depends
 
+from app.database.session import DatabaseSession
+from app.repositories.instrument_repository import (
+    InstrumentRepository,
+)
+from app.services.instrument_service import (
+    InstrumentService,
+)
 
 def get_database_engine() -> Engine:
     return engine
@@ -14,10 +22,11 @@ from app.services.market_data import MarketDataService
 from app.models.market_interval import MarketInterval
 from app.schemas.market import HistoricalMarketDataRequest
 from app.providers.resolver import resolve_market_data_provider
-from app.services.instrument_service import InstrumentService, instrument_service
+from app.services.instrument_service import InstrumentService
 
 def create_market_data_service(
     instrument_code: str,
+    instrument_service: InstrumentService,
 ) -> MarketDataService:
     definition = instrument_service.resolve_definition(
         instrument_code
@@ -31,17 +40,34 @@ def create_market_data_service(
         provider=provider,
         instrument=definition,
     )
+    
+def get_instrument_repository(
+    session: DatabaseSession,
+) -> InstrumentRepository:
+    return InstrumentRepository(
+        session=session
+    )
+
+def get_instrument_service(
+    repository: InstrumentRepository = Depends(
+        get_instrument_repository
+    ),
+) -> InstrumentService:
+    return InstrumentService(
+        repository=repository
+    )
 
 def get_market_data_service(
-    instrument_code: str = Path(
-        ...,
-        description="Platform instrument code",
-        examples=["XAUUSD"],
+    instrument_code: str,
+    instrument_service: InstrumentService = Depends(
+        get_instrument_service
     ),
 ) -> MarketDataService:
     try:
-        return create_market_data_service(
-            instrument_code
+        definition = (
+            instrument_service.resolve_definition(
+                instrument_code
+            )
         )
     except ValueError as error:
         raise HTTPException(
@@ -49,25 +75,53 @@ def get_market_data_service(
             detail=str(error),
         ) from error
 
-def get_gold_futures_service() -> MarketDataService:
-    return create_market_data_service(
-        "GOLD_FUTURES"
+    provider = resolve_market_data_provider(
+        definition
     )
 
-def get_gold_futures_historical_service() -> MarketDataService:
-    return create_market_data_service(
-        "GOLD_FUTURES"
+    return MarketDataService(
+        provider=provider,
+        instrument=definition,
     )
 
-
-def get_gold_spot_service() -> MarketDataService:
+def get_gold_futures_service(
+    instrument_service: InstrumentService = Depends(
+        get_instrument_service
+    ),
+) -> MarketDataService:
     return create_market_data_service(
-        "XAUUSD"
+        instrument_code="GOLD_FUTURES",
+        instrument_service=instrument_service,
     )
 
-def get_gold_spot_historical_service() -> MarketDataService:
+def get_gold_futures_historical_service(
+    instrument_service: InstrumentService = Depends(
+        get_instrument_service
+    ),
+) -> MarketDataService:
     return create_market_data_service(
-        "XAUUSD"
+        instrument_code="GOLD_FUTURES",
+        instrument_service=instrument_service,
+    )
+    
+def get_gold_spot_service(
+    instrument_service: InstrumentService = Depends(
+        get_instrument_service
+    ),
+) -> MarketDataService:
+    return create_market_data_service(
+        instrument_code="XAUUSD",
+        instrument_service=instrument_service,
+    )
+
+def get_gold_spot_historical_service(
+    instrument_service: InstrumentService = Depends(
+        get_instrument_service
+    ),
+) -> MarketDataService:
+    return create_market_data_service(
+        instrument_code="XAUUSD",
+        instrument_service=instrument_service,
     )
 
 def get_gold_futures_historical_request(
@@ -189,6 +243,19 @@ def get_historical_market_data_request(
                 include_context=False,
             ),
         ) from error
+        
+def get_instrument_repository(
+    session: DatabaseSession,
+) -> InstrumentRepository:
+    return InstrumentRepository(
+        session=session
+    )
 
-def get_instrument_service() -> InstrumentService:
-    return instrument_service
+def get_instrument_service(
+    repository: InstrumentRepository = Depends(
+        get_instrument_repository
+    ),
+) -> InstrumentService:
+    return InstrumentService(
+        repository=repository
+    )

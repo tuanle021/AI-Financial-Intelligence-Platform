@@ -1,6 +1,9 @@
+import code
 from datetime import datetime, timezone
+from urllib import response
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import pytest
 from app.api.dependencies import (
     get_gold_futures_service,
     get_gold_spot_service,
@@ -24,6 +27,16 @@ from app.instruments.definitions import (
 from app.models.instrument_definition import InstrumentDefinition
 from app.schemas.market import MarketPriceResponse
 from app.models.instrument_code import InstrumentCode
+
+from app.api.dependencies import (
+    get_instrument_service,
+)
+from app.entities.instrument_entity import (
+    InstrumentEntity,
+)
+from app.services.instrument_service import (
+    InstrumentService,
+)
 
 
 client = TestClient(app)
@@ -120,7 +133,97 @@ class MockFuturesMarketDataProvider:
                 )
             ],
         )
+    
+class FakeInstrumentRepository:
+    def __init__(self) -> None:
+        self.entities = {
+            "XAUUSD": InstrumentEntity(
+                code="XAUUSD",
+                display_symbol="XAU/USD",
+                name="Gold Spot / US Dollar",
+                asset_type="commodity",
+                base_asset="XAU",
+                quote_asset="USD",
+                market_data_provider="twelve_data",
+                provider_symbol="XAU/USD",
+                supports_latest=True,
+                supports_history=True,
+                supports_sentiment=False,
+                is_active=True,
+            ),
+            "EURUSD": InstrumentEntity(
+                code="EURUSD",
+                display_symbol="EUR/USD",
+                name="Euro / US Dollar",
+                asset_type="forex",
+                base_asset="EUR",
+                quote_asset="USD",
+                market_data_provider="twelve_data",
+                provider_symbol="EUR/USD",
+                supports_latest=True,
+                supports_history=True,
+                supports_sentiment=False,
+                is_active=False,
+            ),
+        }
 
+    def get_by_code(
+        self,
+        code: str,
+    ) -> InstrumentEntity | None:
+        return self.entities.get(
+            code.strip().upper()
+        )
+
+    def list_active(
+        self,
+    ) -> list[InstrumentEntity]:
+        return sorted(
+            [
+                entity
+                for entity in self.entities.values()
+                if entity.is_active
+            ],
+            key=lambda entity: entity.code,
+        )
+        
+    def get_active_by_code(
+        self,
+        code: str,
+    ) -> InstrumentEntity | None:
+        entity = self.entities.get(
+            code.strip().upper()
+        )
+
+        if entity is None or not entity.is_active:
+            return None
+
+        return entity
+    
+def override_instrument_service() -> InstrumentService:
+    return InstrumentService(
+        repository=FakeInstrumentRepository()
+    )
+    
+@pytest.fixture
+def inactive_instrument_service_override():
+    previous_overrides = dict(
+        app.dependency_overrides
+    )
+
+    app.dependency_overrides.clear()
+
+    app.dependency_overrides[
+        get_instrument_service
+    ] = override_instrument_service
+
+    try:
+        yield
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(
+            previous_overrides
+        )
 
 def override_gold_spot_service() -> MarketDataService:
     return MarketDataService(
@@ -590,3 +693,20 @@ def test_get_eur_usd_history():
     assert data["interval"] == "5m"
     assert data["currency"] == "USD"
     assert len(data["candles"]) == 1
+
+def test_inactive_catalogue_repository_override(
+    inactive_instrument_service_override,
+):
+    response = client.get(
+        "/instruments"
+    )
+
+    assert response.status_code == 200
+
+    returned_codes = {
+        instrument["code"]
+        for instrument in response.json()
+    }
+
+    assert "XAUUSD" in returned_codes
+    assert "EURUSD" not in returned_codes
