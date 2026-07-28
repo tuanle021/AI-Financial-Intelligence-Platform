@@ -1,10 +1,3 @@
-from app.instruments.registry import (
-    get_instrument_definition,
-    list_instrument_definitions,
-    resolve_instrument_definition,
-)
-from app.models.instrument_definition import InstrumentDefinition
-from app.schemas.instrument import InstrumentResponse
 from app.mappers.instrument_mapper import (
     map_instrument_entity_to_definition,
 )
@@ -40,7 +33,7 @@ class InstrumentService:
         return map_instrument_entity_to_definition(
             entity
         )
-        
+
     def resolve_definition(
         self,
         instrument_code: str,
@@ -52,13 +45,11 @@ class InstrumentService:
     def list_instruments(
         self,
     ) -> list[InstrumentDefinition]:
-        entities = self.repository.list_active()
-
         return [
             map_instrument_entity_to_definition(
                 entity
             )
-            for entity in entities
+            for entity in self.repository.list_active()
         ]
 
     @staticmethod
@@ -80,7 +71,7 @@ class InstrumentService:
                 definition.supports_sentiment
             ),
         )
-    
+
     def list_instrument_responses(
         self,
     ) -> list[InstrumentResponse]:

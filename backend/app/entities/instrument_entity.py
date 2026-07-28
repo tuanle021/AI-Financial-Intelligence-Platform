@@ -9,6 +9,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from typing import TYPE_CHECKING
+
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from app.entities.market_candle_entity import (
+        MarketCandleEntity,
+    )
 
 
 class InstrumentEntity(Base):
@@ -98,4 +106,10 @@ class InstrumentEntity(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+    
+    market_candles: Mapped[
+        list["MarketCandleEntity"]
+    ] = relationship(
+        back_populates="instrument",
     )

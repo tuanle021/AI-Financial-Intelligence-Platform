@@ -1,17 +1,14 @@
 from unittest.mock import MagicMock
 
 import pytest
-from app.models.asset_type import AssetType
-from app.models.instrument_code import InstrumentCode
-from app.services.instrument_service import (
-    InstrumentService,
-)
-from app.instruments.definitions import EUR_USD, GBP_USD, GOLD_FUTURES, GOLD_SPOT
-from app.instruments.registry import list_instrument_definitions
 
 from app.entities.instrument_entity import (
     InstrumentEntity,
 )
+from app.instruments.registry import (
+    list_instrument_definitions,
+)
+from app.models.instrument_code import InstrumentCode
 from app.repositories.instrument_repository import (
     InstrumentRepository,
 )
@@ -19,13 +16,6 @@ from app.services.instrument_service import (
     InstrumentService,
 )
 
-repository = MagicMock(
-    spec=InstrumentRepository
-)
-
-service = InstrumentService(
-    repository=repository
-)
 
 def create_gold_spot_entity(
 ) -> InstrumentEntity:
@@ -214,8 +204,8 @@ def test_service_lists_public_instrument_responses():
         InstrumentCode.EUR_USD,
         InstrumentCode.GBP_USD,
     }
-    
-    
+
+
 def test_service_resolves_definition_from_repository():
     repository = MagicMock(
         spec=InstrumentRepository
@@ -257,7 +247,8 @@ def test_service_rejects_unknown_instrument():
         service.resolve_definition(
             "UNKNOWN"
         )
-        
+
+
 def test_service_lists_active_definitions():
     repository = MagicMock(
         spec=InstrumentRepository

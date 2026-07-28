@@ -1,42 +1,36 @@
-import code
+from collections.abc import Generator
 from datetime import datetime, timezone
-from urllib import response
+
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
+
 from app.api.dependencies import (
-    get_gold_futures_service,
-    get_gold_spot_service,
     get_gold_futures_historical_service,
+    get_gold_futures_service,
     get_gold_spot_historical_service,
-    get_market_data_service
+    get_gold_spot_service,
+    get_instrument_service,
+    get_market_data_service,
 )
-from app.main import app
-from app.services.market_data import MarketDataService
-from app.schemas.market import (
-    HistoricalMarketDataRequest,
-    HistoricalMarketDataResponse,
-    MarketCandle
-)
+from app.entities.instrument_entity import InstrumentEntity
 from app.instruments.definitions import (
     EUR_USD,
     GBP_USD,
     GOLD_FUTURES,
     GOLD_SPOT,
 )
-from app.models.instrument_definition import InstrumentDefinition
-from app.schemas.market import MarketPriceResponse
+from app.main import app
 from app.models.instrument_code import InstrumentCode
-
-from app.api.dependencies import (
-    get_instrument_service,
+from app.models.instrument_definition import InstrumentDefinition
+from app.schemas.market import (
+    HistoricalMarketDataRequest,
+    HistoricalMarketDataResponse,
+    MarketCandle,
+    MarketPriceResponse,
 )
-from app.entities.instrument_entity import (
-    InstrumentEntity,
-)
-from app.services.instrument_service import (
-    InstrumentService,
-)
+from app.services.instrument_service import InstrumentService
+from app.services.market_data import MarketDataService
 
 
 client = TestClient(app)
@@ -60,7 +54,10 @@ class MockTwelveDataMarketDataProvider:
         return MarketPriceResponse(
             symbol=instrument.provider_symbol,
             price=price,
-            currency=instrument.instrument.quote_asset or "USD",
+            currency=(
+                instrument.instrument.quote_asset
+                or "USD"
+            ),
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -76,7 +73,10 @@ class MockTwelveDataMarketDataProvider:
         return HistoricalMarketDataResponse(
             symbol=instrument.provider_symbol,
             interval=request.interval,
-            currency=instrument.instrument.quote_asset or "USD",
+            currency=(
+                instrument.instrument.quote_asset
+                or "USD"
+            ),
             candles=[
                 MarketCandle(
                     symbol=instrument.provider_symbol,
@@ -100,7 +100,10 @@ class MockFuturesMarketDataProvider:
         return MarketPriceResponse(
             symbol=instrument.provider_symbol,
             price=4097.20,
-            currency=instrument.instrument.quote_asset or "USD",
+            currency=(
+                instrument.instrument.quote_asset
+                or "USD"
+            ),
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -112,7 +115,10 @@ class MockFuturesMarketDataProvider:
         return HistoricalMarketDataResponse(
             symbol=instrument.provider_symbol,
             interval=request.interval,
-            currency=instrument.instrument.quote_asset or "USD",
+            currency=(
+                instrument.instrument.quote_asset
+                or "USD"
+            ),
             candles=[
                 MarketCandle(
                     symbol=instrument.provider_symbol,
@@ -133,7 +139,8 @@ class MockFuturesMarketDataProvider:
                 )
             ],
         )
-    
+
+
 class FakeInstrumentRepository:
     def __init__(self) -> None:
         self.entities = {
@@ -151,6 +158,34 @@ class FakeInstrumentRepository:
                 supports_sentiment=False,
                 is_active=True,
             ),
+            "GOLD_FUTURES": InstrumentEntity(
+                code="GOLD_FUTURES",
+                display_symbol="GC=F",
+                name="Gold Futures",
+                asset_type="futures",
+                base_asset="GOLD",
+                quote_asset="USD",
+                market_data_provider="yahoo",
+                provider_symbol="GC=F",
+                supports_latest=True,
+                supports_history=True,
+                supports_sentiment=False,
+                is_active=True,
+            ),
+            "GBPUSD": InstrumentEntity(
+                code="GBPUSD",
+                display_symbol="GBP/USD",
+                name="British Pound / US Dollar",
+                asset_type="forex",
+                base_asset="GBP",
+                quote_asset="USD",
+                market_data_provider="twelve_data",
+                provider_symbol="GBP/USD",
+                supports_latest=True,
+                supports_history=True,
+                supports_sentiment=False,
+                is_active=True,
+            ),
             "EURUSD": InstrumentEntity(
                 code="EURUSD",
                 display_symbol="EUR/USD",
@@ -163,7 +198,7 @@ class FakeInstrumentRepository:
                 supports_latest=True,
                 supports_history=True,
                 supports_sentiment=False,
-                is_active=False,
+                is_active=True,
             ),
         }
 
@@ -179,51 +214,35 @@ class FakeInstrumentRepository:
         self,
     ) -> list[InstrumentEntity]:
         return sorted(
-            [
+            (
                 entity
                 for entity in self.entities.values()
                 if entity.is_active
-            ],
+            ),
             key=lambda entity: entity.code,
         )
-        
-    def get_active_by_code(
-        self,
-        code: str,
-    ) -> InstrumentEntity | None:
-        entity = self.entities.get(
-            code.strip().upper()
-        )
 
-        if entity is None or not entity.is_active:
-            return None
 
-        return entity
-    
+class InactiveInstrumentRepository(
+    FakeInstrumentRepository
+):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entities["EURUSD"].is_active = False
+
+
 def override_instrument_service() -> InstrumentService:
     return InstrumentService(
         repository=FakeInstrumentRepository()
     )
-    
-@pytest.fixture
-def inactive_instrument_service_override():
-    previous_overrides = dict(
-        app.dependency_overrides
+
+
+def override_inactive_instrument_service(
+) -> InstrumentService:
+    return InstrumentService(
+        repository=InactiveInstrumentRepository()
     )
 
-    app.dependency_overrides.clear()
-
-    app.dependency_overrides[
-        get_instrument_service
-    ] = override_instrument_service
-
-    try:
-        yield
-    finally:
-        app.dependency_overrides.clear()
-        app.dependency_overrides.update(
-            previous_overrides
-        )
 
 def override_gold_spot_service() -> MarketDataService:
     return MarketDataService(
@@ -238,32 +257,34 @@ def override_gold_futures_service() -> MarketDataService:
         instrument=GOLD_FUTURES,
     )
 
-def override_gold_spot_historical_service() -> MarketDataService:
+
+def override_gold_spot_historical_service(
+) -> MarketDataService:
     return MarketDataService(
         provider=MockTwelveDataMarketDataProvider(),
         instrument=GOLD_SPOT,
     )
 
-def override_gold_futures_historical_service() -> MarketDataService:
+
+def override_gold_futures_historical_service(
+) -> MarketDataService:
     return MarketDataService(
         provider=MockFuturesMarketDataProvider(),
         instrument=GOLD_FUTURES,
     )
 
+
 def override_market_data_service(
     instrument_code: str,
 ) -> MarketDataService:
-    normalised_code = instrument_code.strip().upper()
-
     definitions = {
         "XAUUSD": GOLD_SPOT,
         "GOLD_FUTURES": GOLD_FUTURES,
         "GBPUSD": GBP_USD,
         "EURUSD": EUR_USD,
     }
-
     definition = definitions.get(
-        normalised_code
+        instrument_code.strip().upper()
     )
 
     if definition is None:
@@ -278,7 +299,9 @@ def override_market_data_service(
     if definition == GOLD_FUTURES:
         provider = MockFuturesMarketDataProvider()
     else:
-        provider = MockTwelveDataMarketDataProvider()
+        provider = (
+            MockTwelveDataMarketDataProvider()
+        )
 
     return MarketDataService(
         provider=provider,
@@ -286,415 +309,432 @@ def override_market_data_service(
     )
 
 
-def test_get_gold_spot_market_data():
+@pytest.fixture(autouse=True)
+def reset_dependency_overrides(
+) -> Generator[None, None, None]:
+    previous_overrides = dict(
+        app.dependency_overrides
+    )
+
+    try:
+        yield
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(
+            previous_overrides
+        )
+
+
+@pytest.fixture
+def instrument_service_override(
+) -> Generator[None, None, None]:
+    app.dependency_overrides[
+        get_instrument_service
+    ] = override_instrument_service
+    yield
+
+
+@pytest.fixture
+def inactive_instrument_service_override(
+) -> Generator[None, None, None]:
+    app.dependency_overrides[
+        get_instrument_service
+    ] = override_inactive_instrument_service
+    yield
+
+
+@pytest.fixture
+def gold_spot_service_override(
+) -> Generator[None, None, None]:
     app.dependency_overrides[
         get_gold_spot_service
     ] = override_gold_spot_service
-
-    try:
-        response = client.get("/market/gold/spot")
-    finally:
-        app.dependency_overrides.pop(
-            get_gold_spot_service,
-            None,
-        )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["symbol"] == "XAU/USD"
-    assert data["price"] == 4056.80
-    assert data["currency"] == "USD"
-    assert "timestamp" in data
+    yield
 
 
-def test_get_gold_futures_market_data():
+@pytest.fixture
+def gold_futures_service_override(
+) -> Generator[None, None, None]:
     app.dependency_overrides[
         get_gold_futures_service
     ] = override_gold_futures_service
+    yield
 
-    try:
-        response = client.get("/market/gold/futures")
-    finally:
-        app.dependency_overrides.pop(
-            get_gold_futures_service,
-            None,
-        )
 
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["symbol"] == "GC=F"
-    assert data["price"] == 4097.20
-    assert data["currency"] == "USD"
-    assert "timestamp" in data
-
-def test_get_gold_futures_historical_data():
-    app.dependency_overrides[
-        get_gold_futures_historical_service
-    ] = override_gold_futures_historical_service
-
-    try:
-        response = client.get(
-            "/market/gold/futures/history",
-            params={
-                "interval": "5m",
-                "start_time": "2026-07-14T10:00:00Z",
-                "end_time": "2026-07-14T11:00:00Z",
-            },
-        )
-    finally:
-        app.dependency_overrides.pop(
-            get_gold_futures_historical_service,
-            None,
-        )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["symbol"] == "GC=F"
-    assert data["interval"] == "5m"
-    assert data["currency"] == "USD"
-    assert len(data["candles"]) == 1
-
-    candle = data["candles"][0]
-
-    assert candle["open"] == 4095.10
-    assert candle["high"] == 4098.40
-    assert candle["low"] == 4094.70
-    assert candle["close"] == 4097.20
-    assert candle["volume"] == 1832
-
-def test_historical_endpoint_rejects_invalid_interval():
-    response = client.get(
-        "/market/gold/futures/history",
-        params={
-            "interval": "2h",
-            "start_time": "2026-07-14T10:00:00Z",
-            "end_time": "2026-07-14T11:00:00Z",
-        },
-    )
-
-    assert response.status_code == 422
-
-def test_historical_endpoint_rejects_invalid_date_range():
-    app.dependency_overrides[
-        get_gold_futures_historical_service
-    ] = override_gold_futures_historical_service
-
-    try:
-        response = client.get(
-            "/market/gold/futures/history",
-            params={
-                "interval": "5m",
-                "start_time": "2026-07-14T12:00:00Z",
-                "end_time": "2026-07-14T11:00:00Z",
-            },
-        )
-    finally:
-        app.dependency_overrides.pop(
-            get_gold_futures_historical_service,
-            None,
-        )
-
-    assert response.status_code == 422
-
-def test_get_gold_spot_historical_data():
+@pytest.fixture
+def gold_spot_history_override(
+) -> Generator[None, None, None]:
     app.dependency_overrides[
         get_gold_spot_historical_service
     ] = override_gold_spot_historical_service
+    yield
 
-    try:
+
+@pytest.fixture
+def gold_futures_history_override(
+) -> Generator[None, None, None]:
+    app.dependency_overrides[
+        get_gold_futures_historical_service
+    ] = override_gold_futures_historical_service
+    yield
+
+
+@pytest.fixture
+def market_data_service_override(
+) -> Generator[None, None, None]:
+    app.dependency_overrides[
+        get_market_data_service
+    ] = override_market_data_service
+    yield
+
+
+@pytest.mark.usefixtures(
+    "gold_spot_service_override"
+)
+class TestLegacyGoldSpotLatest:
+    def test_get_gold_spot_market_data(self):
+        response = client.get(
+            "/market/gold/spot"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "XAU/USD"
+        assert data["price"] == 4056.80
+        assert data["currency"] == "USD"
+        assert "timestamp" in data
+
+
+@pytest.mark.usefixtures(
+    "gold_futures_service_override"
+)
+class TestLegacyGoldFuturesLatest:
+    def test_get_gold_futures_market_data(self):
+        response = client.get(
+            "/market/gold/futures"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GC=F"
+        assert data["price"] == 4097.20
+        assert data["currency"] == "USD"
+        assert "timestamp" in data
+
+
+@pytest.mark.usefixtures(
+    "gold_futures_history_override"
+)
+class TestLegacyGoldFuturesHistory:
+    def test_get_gold_futures_historical_data(
+        self,
+    ):
+        response = client.get(
+            "/market/gold/futures/history",
+            params={
+                "interval": "5m",
+                "start_time": (
+                    "2026-07-14T10:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GC=F"
+        assert data["interval"] == "5m"
+        assert data["currency"] == "USD"
+        assert len(data["candles"]) == 1
+
+        candle = data["candles"][0]
+        assert candle["open"] == 4095.10
+        assert candle["high"] == 4098.40
+        assert candle["low"] == 4094.70
+        assert candle["close"] == 4097.20
+        assert candle["volume"] == 1832
+
+    def test_historical_endpoint_rejects_invalid_interval(
+        self,
+    ):
+        response = client.get(
+            "/market/gold/futures/history",
+            params={
+                "interval": "2h",
+                "start_time": (
+                    "2026-07-14T10:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_historical_endpoint_rejects_invalid_date_range(
+        self,
+    ):
+        response = client.get(
+            "/market/gold/futures/history",
+            params={
+                "interval": "5m",
+                "start_time": (
+                    "2026-07-14T12:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
+            },
+        )
+
+        assert response.status_code == 422
+
+
+@pytest.mark.usefixtures(
+    "gold_spot_history_override"
+)
+class TestLegacyGoldSpotHistory:
+    def test_get_gold_spot_historical_data(
+        self,
+    ):
         response = client.get(
             "/market/gold/spot/history",
             params={
                 "interval": "5m",
-                "start_time": "2026-07-14T10:00:00Z",
-                "end_time": "2026-07-14T11:00:00Z",
+                "start_time": (
+                    "2026-07-14T10:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
             },
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_gold_spot_historical_service,
-            None,
-        )
 
-    assert response.status_code == 200
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "XAU/USD"
+        assert data["interval"] == "5m"
+        assert data["currency"] == "USD"
+        assert len(data["candles"]) == 1
+        assert data["candles"][0]["volume"] is None
 
-    data = response.json()
 
-    assert data["symbol"] == "XAU/USD"
-    assert data["interval"] == "5m"
-    assert data["currency"] == "USD"
-    assert len(data["candles"]) == 1
-    assert data["candles"][0]["volume"] is None
-
-def test_get_generic_gold_spot_latest():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+@pytest.mark.usefixtures(
+    "market_data_service_override"
+)
+class TestGenericMarketEndpoints:
+    def test_get_generic_gold_spot_latest(self):
         response = client.get(
             "/market/XAUUSD/latest"
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
-        )
 
-    assert response.status_code == 200
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "XAU/USD"
+        assert data["price"] == 4056.80
+        assert data["currency"] == "USD"
+        assert "timestamp" in data
 
-    data = response.json()
-
-    assert data["symbol"] == "XAU/USD"
-    assert data["price"] == 4056.80
-    assert data["currency"] == "USD"
-    assert "timestamp" in data
-
-def test_get_generic_gold_futures_latest():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_get_generic_gold_futures_latest(self):
         response = client.get(
             "/market/GOLD_FUTURES/latest"
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
-        )
 
-    assert response.status_code == 200
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GC=F"
+        assert data["price"] == 4097.20
+        assert data["currency"] == "USD"
 
-    data = response.json()
-
-    assert data["symbol"] == "GC=F"
-    assert data["price"] == 4097.20
-    assert data["currency"] == "USD"
-
-def test_generic_instrument_code_is_case_insensitive():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_generic_instrument_code_is_case_insensitive(
+        self,
+    ):
         response = client.get(
             "/market/xauusd/latest"
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
+
+        assert response.status_code == 200
+        assert (
+            response.json()["symbol"]
+            == "XAU/USD"
         )
 
-    assert response.status_code == 200
-    assert response.json()["symbol"] == "XAU/USD"
-
-def test_get_generic_gold_spot_history():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_get_generic_gold_spot_history(self):
         response = client.get(
             "/market/XAUUSD/history",
             params={
                 "interval": "5m",
-                "start_time": "2026-07-14T10:00:00Z",
-                "end_time": "2026-07-14T11:00:00Z",
+                "start_time": (
+                    "2026-07-14T10:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
             },
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "XAU/USD"
+        assert data["interval"] == "5m"
+        assert data["currency"] == "USD"
+        assert len(data["candles"]) == 1
+
+    def test_generic_endpoint_rejects_unknown_instrument(
+        self,
+    ):
+        response = client.get(
+            "/market/UNKNOWN/latest"
         )
 
-    assert response.status_code == 200
+        assert response.status_code == 404
+        assert response.json()["detail"] == (
+            "Unsupported instrument: UNKNOWN"
+        )
 
-    data = response.json()
-
-    assert data["symbol"] == "XAU/USD"
-    assert data["interval"] == "5m"
-    assert data["currency"] == "USD"
-    assert len(data["candles"]) == 1
-
-def test_generic_endpoint_rejects_unknown_instrument():
-    response = client.get(
-        "/market/UNKNOWN/latest"
-    )
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == (
-        "Unsupported instrument: UNKNOWN"
-    )
-
-def test_generic_history_rejects_invalid_date_range():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_generic_history_rejects_invalid_date_range(
+        self,
+    ):
         response = client.get(
             "/market/XAUUSD/history",
             params={
                 "interval": "5m",
-                "start_time": "2026-07-14T12:00:00Z",
-                "end_time": "2026-07-14T11:00:00Z",
+                "start_time": (
+                    "2026-07-14T12:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-14T11:00:00Z"
+                ),
             },
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
-        )
 
-    assert response.status_code == 422
+        assert response.status_code == 422
 
-def test_list_instruments():
-    response = client.get(
-        "/instruments"
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert isinstance(data, list)
-
-    codes = {
-        instrument["code"]
-        for instrument in data
-    }
-
-    assert "XAUUSD" in codes
-    assert "GOLD_FUTURES" in codes
-
-def test_get_gold_spot_instrument():
-    response = client.get(
-        "/instruments/XAUUSD"
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["code"] == "XAUUSD"
-    assert data["display_symbol"] == "XAU/USD"
-    assert data["asset_type"] == "commodity"
-    assert data["supports_latest"] is True
-    assert data["supports_history"] is True
-
-def test_get_instrument_is_case_insensitive():
-    response = client.get(
-        "/instruments/xauusd"
-    )
-
-    assert response.status_code == 200
-    assert response.json()["code"] == "XAUUSD"
-
-def test_get_unknown_instrument_returns_404():
-    response = client.get(
-        "/instruments/UNKNOWN"
-    )
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == (
-        "Unsupported instrument: UNKNOWN"
-    )
-
-def test_list_instruments_includes_forex_pairs():
-    response = client.get(
-        "/instruments"
-    )
-
-    assert response.status_code == 200
-
-    codes = {
-        instrument["code"]
-        for instrument in response.json()
-    }
-
-    assert "GBPUSD" in codes
-    assert "EURUSD" in codes
-
-def test_get_gbp_usd_instrument():
-    response = client.get(
-        "/instruments/GBPUSD"
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["code"] == "GBPUSD"
-    assert data["display_symbol"] == "GBP/USD"
-    assert data["asset_type"] == "forex"
-    assert data["base_asset"] == "GBP"
-    assert data["quote_asset"] == "USD"
-    assert data["supports_latest"] is True
-    assert data["supports_history"] is True
-
-def test_get_gbp_usd_latest():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_get_gbp_usd_latest(self):
         response = client.get(
             "/market/GBPUSD/latest"
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
-        )
 
-    assert response.status_code == 200
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GBP/USD"
+        assert data["price"] == 1.2935
+        assert data["currency"] == "USD"
 
-    data = response.json()
-
-    assert data["symbol"] == "GBP/USD"
-    assert data["price"] == 1.2935
-    assert data["currency"] == "USD"
-    
-def test_get_eur_usd_history():
-    app.dependency_overrides[
-        get_market_data_service
-    ] = override_market_data_service
-
-    try:
+    def test_get_eur_usd_history(self):
         response = client.get(
             "/market/EURUSD/history",
             params={
                 "interval": "5m",
-                "start_time": "2026-07-22T10:00:00Z",
-                "end_time": "2026-07-22T11:00:00Z",
+                "start_time": (
+                    "2026-07-22T10:00:00Z"
+                ),
+                "end_time": (
+                    "2026-07-22T11:00:00Z"
+                ),
             },
         )
-    finally:
-        app.dependency_overrides.pop(
-            get_market_data_service,
-            None,
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "EUR/USD"
+        assert data["interval"] == "5m"
+        assert data["currency"] == "USD"
+        assert len(data["candles"]) == 1
+
+
+@pytest.mark.usefixtures(
+    "instrument_service_override"
+)
+class TestInstrumentEndpoints:
+    def test_list_instruments(self):
+        response = client.get(
+            "/instruments"
         )
 
-    assert response.status_code == 200
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
-    data = response.json()
+        codes = {
+            instrument["code"]
+            for instrument in data
+        }
+        assert "XAUUSD" in codes
+        assert "GOLD_FUTURES" in codes
 
-    assert data["symbol"] == "EUR/USD"
-    assert data["interval"] == "5m"
-    assert data["currency"] == "USD"
-    assert len(data["candles"]) == 1
+    def test_get_gold_spot_instrument(self):
+        response = client.get(
+            "/instruments/XAUUSD"
+        )
 
-def test_inactive_catalogue_repository_override(
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == "XAUUSD"
+        assert data["display_symbol"] == "XAU/USD"
+        assert data["asset_type"] == "commodity"
+        assert data["supports_latest"] is True
+        assert data["supports_history"] is True
+
+    def test_get_instrument_is_case_insensitive(
+        self,
+    ):
+        response = client.get(
+            "/instruments/xauusd"
+        )
+
+        assert response.status_code == 200
+        assert (
+            response.json()["code"] == "XAUUSD"
+        )
+
+    def test_get_unknown_instrument_returns_404(
+        self,
+    ):
+        response = client.get(
+            "/instruments/UNKNOWN"
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == (
+            "Unsupported instrument: UNKNOWN"
+        )
+
+    def test_list_instruments_includes_forex_pairs(
+        self,
+    ):
+        response = client.get(
+            "/instruments"
+        )
+
+        assert response.status_code == 200
+        codes = {
+            instrument["code"]
+            for instrument in response.json()
+        }
+        assert "GBPUSD" in codes
+        assert "EURUSD" in codes
+
+    def test_get_gbp_usd_instrument(self):
+        response = client.get(
+            "/instruments/GBPUSD"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == "GBPUSD"
+        assert data["display_symbol"] == "GBP/USD"
+        assert data["asset_type"] == "forex"
+        assert data["base_asset"] == "GBP"
+        assert data["quote_asset"] == "USD"
+        assert data["supports_latest"] is True
+        assert data["supports_history"] is True
+
+
+def test_list_instruments_excludes_inactive_instruments(
     inactive_instrument_service_override,
 ):
     response = client.get(
@@ -702,11 +742,9 @@ def test_inactive_catalogue_repository_override(
     )
 
     assert response.status_code == 200
-
     returned_codes = {
         instrument["code"]
         for instrument in response.json()
     }
-
     assert "XAUUSD" in returned_codes
     assert "EURUSD" not in returned_codes
