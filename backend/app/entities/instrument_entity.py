@@ -1,16 +1,13 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
+from app.database.base import Base
 from sqlalchemy import (
     Boolean,
     DateTime,
     String,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.database.base import Base
-from typing import TYPE_CHECKING
-
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
@@ -107,9 +104,7 @@ class InstrumentEntity(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
-    
-    market_candles: Mapped[
-        list["MarketCandleEntity"]
-    ] = relationship(
+
+    market_candles: Mapped[list["MarketCandleEntity"]] = relationship(
         back_populates="instrument",
     )

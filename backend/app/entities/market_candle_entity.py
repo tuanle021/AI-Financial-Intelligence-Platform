@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
+from app.database.base import Base
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -8,12 +10,6 @@ from sqlalchemy import (
     String,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.database.base import Base
-
-from typing import TYPE_CHECKING
-
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:

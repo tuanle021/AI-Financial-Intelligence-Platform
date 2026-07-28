@@ -1,9 +1,5 @@
 from datetime import datetime
 
-from fastapi import Depends, HTTPException, Query, status
-from pydantic import ValidationError
-from sqlalchemy.engine import Engine
-
 from app.database.engine import engine
 from app.database.session import DatabaseSession
 from app.models.market_interval import MarketInterval
@@ -16,6 +12,9 @@ from app.services.instrument_service import (
     InstrumentService,
 )
 from app.services.market_data import MarketDataService
+from fastapi import Depends, HTTPException, Query, status
+from pydantic import ValidationError
+from sqlalchemy.engine import Engine
 
 
 def get_database_engine() -> Engine:
@@ -31,9 +30,7 @@ def get_instrument_repository(
 
 
 def get_instrument_service(
-    repository: InstrumentRepository = Depends(
-        get_instrument_repository
-    ),
+    repository: InstrumentRepository = Depends(get_instrument_repository),
 ) -> InstrumentService:
     return InstrumentService(
         repository=repository,
@@ -44,15 +41,9 @@ def create_market_data_service(
     instrument_code: str,
     instrument_service: InstrumentService,
 ) -> MarketDataService:
-    definition = (
-        instrument_service.resolve_definition(
-            instrument_code
-        )
-    )
+    definition = instrument_service.resolve_definition(instrument_code)
 
-    provider = resolve_market_data_provider(
-        definition
-    )
+    provider = resolve_market_data_provider(definition)
 
     return MarketDataService(
         provider=provider,
@@ -62,9 +53,7 @@ def create_market_data_service(
 
 def get_market_data_service(
     instrument_code: str,
-    instrument_service: InstrumentService = Depends(
-        get_instrument_service
-    ),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
 ) -> MarketDataService:
     try:
         return create_market_data_service(
@@ -79,9 +68,7 @@ def get_market_data_service(
 
 
 def get_gold_futures_service(
-    instrument_service: InstrumentService = Depends(
-        get_instrument_service
-    ),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="GOLD_FUTURES",
@@ -90,9 +77,7 @@ def get_gold_futures_service(
 
 
 def get_gold_futures_historical_service(
-    instrument_service: InstrumentService = Depends(
-        get_instrument_service
-    ),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="GOLD_FUTURES",
@@ -101,9 +86,7 @@ def get_gold_futures_historical_service(
 
 
 def get_gold_spot_service(
-    instrument_service: InstrumentService = Depends(
-        get_instrument_service
-    ),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="XAUUSD",
@@ -112,9 +95,7 @@ def get_gold_spot_service(
 
 
 def get_gold_spot_historical_service(
-    instrument_service: InstrumentService = Depends(
-        get_instrument_service
-    ),
+    instrument_service: InstrumentService = Depends(get_instrument_service),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="XAUUSD",
@@ -144,9 +125,7 @@ def get_historical_market_data_request(
         )
     except ValidationError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_422_UNPROCESSABLE_CONTENT
-            ),
+            status_code=(status.HTTP_422_UNPROCESSABLE_CONTENT),
             detail=error.errors(
                 include_url=False,
                 include_input=False,

@@ -1,10 +1,7 @@
 from collections.abc import Generator
 from datetime import datetime, timezone
 
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
 import pytest
-
 from app.api.dependencies import (
     get_gold_futures_historical_service,
     get_gold_futures_service,
@@ -31,13 +28,14 @@ from app.schemas.market import (
 )
 from app.services.instrument_service import InstrumentService
 from app.services.market_data import MarketDataService
-
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
 
 class MockTwelveDataMarketDataProvider:
-    PRICES = {
+    PRICES = {  # noqa: RUF012
         InstrumentCode.GOLD_SPOT: 4056.80,
         InstrumentCode.GBP_USD: 1.2935,
         InstrumentCode.EUR_USD: 1.1724,
