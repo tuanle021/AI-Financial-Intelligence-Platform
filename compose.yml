@@ -15,7 +15,7 @@ services:
       - timescaledb_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,14 +24,14 @@ services:
     restart: unless-stopped
 
     networks:
-      - ai-financial-platform
+      - ai-financial-intelligence-platform
 
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
 
-    container_name: ai-financial-platform-api
+    container_name: ai-financial-intelligence-platform-api
 
     env_file:
       - ./backend/.env
@@ -70,11 +70,11 @@ services:
     restart: unless-stopped
 
     networks:
-      - ai-financial-platform
+      - ai-financial-intelligence-platform
 
 volumes:
   timescaledb_data:
 
 networks:
-  ai-financial-platform:
-    name: ai-financial-platform
+  ai-financial-intelligence-platform:
+    name: ai-financial-intelligence-platform
