@@ -16,7 +16,7 @@ def test_database_engine_is_configured():
         "postgresql+psycopg"
     )
 
-    assert engine.url.host == "localhost"
+    assert engine.url.host == "timescaledb"
     assert engine.url.port == 5432
 
 def test_create_database_engine():
