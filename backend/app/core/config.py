@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         le=65535,
     )
     database_name: str = (
-        "ai_market_intelligence"
+        "ai_financial_itelligence_platform"
     )
     database_user: str = "postgres"
     database_password: str
@@ -45,4 +45,4 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()
+settings = Settings() # pyright: ignore[reportCallIssue]

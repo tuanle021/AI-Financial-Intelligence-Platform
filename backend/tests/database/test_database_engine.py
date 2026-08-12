@@ -1,6 +1,5 @@
 from sqlalchemy import URL
 from sqlalchemy.engine import Engine
-from app.core.config import settings
 
 
 from app.database.engine import (

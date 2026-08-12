@@ -5,6 +5,9 @@ from app.schemas.market import (
     HistoricalMarketDataResponse,
     MarketPriceResponse,
 )
+from app.services.historical_market_data_persistence_service import (
+    HistoricalMarketDataPersistenceService,
+)
 
 
 class MarketDataService:
@@ -12,9 +15,16 @@ class MarketDataService:
         self,
         provider: MarketDataProvider,
         instrument: InstrumentDefinition,
-    ):
+        persistence_service: (
+            HistoricalMarketDataPersistenceService
+            | None
+        ) = None,
+    ) -> None:
         self.provider = provider
         self.instrument = instrument
+        self.persistence_service = (
+            persistence_service
+        )
 
     def get_latest_price(self) -> MarketPriceResponse:
         return self.provider.get_latest_price(
@@ -29,7 +39,15 @@ class MarketDataService:
         self,
         request: HistoricalMarketDataRequest,
     ) -> HistoricalMarketDataResponse:
-        return self.provider.get_historical_data(
+        response = self.provider.get_historical_data(
             self.instrument,
             request,
         )
+
+        if self.persistence_service is not None:
+            self.persistence_service.persist(
+                definition=self.instrument,
+                response=response,
+            )
+
+        return response
