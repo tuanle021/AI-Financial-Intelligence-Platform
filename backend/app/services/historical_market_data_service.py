@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.models.instrument_definition import (
     InstrumentDefinition,
 )
@@ -15,6 +17,9 @@ from app.mappers.market_candle_mapper import (
     map_market_candle_entity_to_schema,
 )
 
+from app.utils.market_interval_utils import (
+    calculate_expected_timestamps,
+)
 
 class HistoricalMarketDataService:
     def __init__(
@@ -62,6 +67,25 @@ class HistoricalMarketDataService:
         if not candles:
             return None
 
+        expected_timestamps = (
+            calculate_expected_timestamps(
+                start_time=request.start_time,
+                end_time=request.end_time,
+                interval=request.interval,
+            )
+        )
+
+        cached_timestamps = [
+            candle.timestamp
+            for candle in candles
+        ]
+
+        if not self._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        ):
+            return None
+
         return HistoricalMarketDataResponse(
             symbol=definition.provider_symbol,
             interval=request.interval,
@@ -76,4 +100,14 @@ class HistoricalMarketDataService:
                 )
                 for candle in candles
             ],
+        )
+
+    @staticmethod
+    def _is_cache_complete(
+        *,
+        cached_timestamps: list[datetime],
+        expected_timestamps: list[datetime],
+    ) -> bool:
+        return set(expected_timestamps).issubset(
+            set(cached_timestamps)
         )

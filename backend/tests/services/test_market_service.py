@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
+import pytest
+
 from app.providers.mock_market_provider import MockMarketDataProvider
 from app.services.market_data import MarketDataService
 from app.models.market_interval import MarketInterval
@@ -295,3 +297,125 @@ def test_market_service_fetches_and_persists_when_cache_empty():
         definition=GOLD_FUTURES,
         response=provider_response,
     )
+
+def test_market_service_fetches_provider_when_cache_incomplete():
+    provider = Mock()
+    persistence_service = Mock()
+    historical_service = Mock(
+        spec=HistoricalMarketDataService
+    )
+
+    request = HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            11,
+            0,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    provider_response = HistoricalMarketDataResponse(
+        symbol=GOLD_FUTURES.provider_symbol,
+        interval=MarketInterval.FIVE_MINUTES,
+        currency="USD",
+        candles=[],
+    )
+
+    historical_service.get_cached_response.return_value = (
+        None
+    )
+
+    provider.get_historical_data.return_value = (
+        provider_response
+    )
+
+    service = MarketDataService(
+        provider=provider,
+        instrument=GOLD_FUTURES,
+        persistence_service=persistence_service,
+        historical_service=historical_service,
+    )
+
+    result = service.get_historical_data(
+        request
+    )
+
+    assert result == provider_response
+
+    historical_service.get_cached_response.assert_called_once_with(
+        definition=GOLD_FUTURES,
+        request=request,
+    )
+
+    provider.get_historical_data.assert_called_once_with(
+        GOLD_FUTURES,
+        request,
+    )
+
+    persistence_service.persist.assert_called_once_with(
+        definition=GOLD_FUTURES,
+        response=provider_response,
+    )
+
+def test_market_service_does_not_persist_when_provider_fails():
+    provider = Mock()
+    persistence_service = Mock()
+    historical_service = Mock(
+        spec=HistoricalMarketDataService
+    )
+
+    request = HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            11,
+            0,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    historical_service.get_cached_response.return_value = (
+        None
+    )
+
+    provider.get_historical_data.side_effect = (
+        RuntimeError("provider unavailable")
+    )
+
+    service = MarketDataService(
+        provider=provider,
+        instrument=GOLD_FUTURES,
+        persistence_service=persistence_service,
+        historical_service=historical_service,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="provider unavailable",
+    ):
+        service.get_historical_data(
+            request
+        )
+
+    persistence_service.persist.assert_not_called()

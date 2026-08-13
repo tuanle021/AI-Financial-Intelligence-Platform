@@ -110,7 +110,7 @@ class MarketCandleRepository:
                 MarketCandleEntity.timestamp
                 >= start_time,
                 MarketCandleEntity.timestamp
-                < end_time,
+                <= end_time,
             )
             .order_by(
                 MarketCandleEntity.timestamp.asc()

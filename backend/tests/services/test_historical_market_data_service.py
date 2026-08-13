@@ -89,6 +89,27 @@ def create_candle_entity(
         source_provider="twelve_data",
     )
 
+def create_single_candle_request(
+) -> HistoricalMarketDataRequest:
+    return HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            1,
+            tzinfo=timezone.utc,
+        ),
+    )
 
 def test_get_cached_response_returns_cached_candles():
     instrument_repository = MagicMock(
@@ -111,7 +132,7 @@ def test_get_cached_response_returns_cached_candles():
         candle_repository=candle_repository,
     )
 
-    request = create_request()
+    request = create_single_candle_request()
 
     result = service.get_cached_response(
         definition=GOLD_SPOT,
@@ -204,3 +225,295 @@ def test_get_cached_response_rejects_unknown_instrument():
         )
 
     candle_repository.list_by_range.assert_not_called()
+
+def test_cache_is_complete_when_all_expected_timestamps_exist():
+    cached_timestamps = [
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            5,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    expected_timestamps = list(
+        cached_timestamps
+    )
+
+    result = (
+        HistoricalMarketDataService
+        ._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        )
+    )
+
+    assert result is True
+
+def test_cache_is_incomplete_when_timestamp_is_missing():
+    expected_timestamps = [
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            5,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    cached_timestamps = [
+        expected_timestamps[0],
+        expected_timestamps[2],
+    ]
+
+    result = (
+        HistoricalMarketDataService
+        ._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        )
+    )
+
+    assert result is False
+
+def test_cache_is_complete_when_extra_timestamps_exist():
+    expected_timestamps = [
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            5,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    cached_timestamps = [
+        *expected_timestamps,
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    result = (
+        HistoricalMarketDataService
+        ._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        )
+    )
+
+    assert result is True
+
+def test_get_cached_response_returns_none_when_cache_has_gap():
+    instrument_repository = MagicMock(
+        spec=InstrumentRepository
+    )
+    candle_repository = MagicMock(
+        spec=MarketCandleRepository
+    )
+
+    instrument_repository.get_by_code.return_value = (
+        create_instrument_entity()
+    )
+
+    first_candle = create_candle_entity()
+
+    third_candle = MarketCandleEntity(
+        instrument_id=1,
+        interval="5m",
+        timestamp=datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+        open=Decimal("4056.00"),
+        high=Decimal("4059.00"),
+        low=Decimal("4055.00"),
+        close=Decimal("4057.00"),
+        volume=None,
+        source_provider="twelve_data",
+    )
+
+    candle_repository.list_by_range.return_value = [
+        first_candle,
+        third_candle,
+    ]
+
+    service = HistoricalMarketDataService(
+        instrument_repository=instrument_repository,
+        candle_repository=candle_repository,
+    )
+
+    request = HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    result = service.get_cached_response(
+        definition=GOLD_SPOT,
+        request=request,
+    )
+
+    assert result is None
+
+def test_cache_is_incomplete_when_count_matches_but_timestamp_is_wrong():
+    expected_timestamps = [
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            5,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    cached_timestamps = [
+        expected_timestamps[0],
+        expected_timestamps[1],
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            15,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    result = (
+        HistoricalMarketDataService
+        ._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        )
+    )
+
+    assert result is False
+
+def test_cache_is_incomplete_when_duplicate_does_not_replace_missing_timestamp():
+    expected_timestamps = [
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            5,
+            tzinfo=timezone.utc,
+        ),
+        datetime(
+            2026,
+            7,
+            22,
+            10,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    ]
+
+    cached_timestamps = [
+        expected_timestamps[0],
+        expected_timestamps[0],
+        expected_timestamps[2],
+    ]
+
+    result = (
+        HistoricalMarketDataService
+        ._is_cache_complete(
+            cached_timestamps=cached_timestamps,
+            expected_timestamps=expected_timestamps,
+        )
+    )
+
+    assert result is False
