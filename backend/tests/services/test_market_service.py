@@ -16,7 +16,9 @@ from app.schemas.market import MarketPriceResponse
 from app.services.historical_market_data_persistence_service import (
     HistoricalMarketDataPersistenceService,
 )
-
+from app.services.historical_market_data_service import (
+    HistoricalMarketDataService,
+)
 
 
 def test_market_service_returns_gold_price():
@@ -163,4 +165,133 @@ def test_market_service_persists_historical_response():
     persistence_service.persist.assert_called_once_with(
         definition=GOLD_FUTURES,
         response=expected_response,
+    )
+
+def test_market_service_returns_cached_historical_response():
+    provider = Mock()
+    persistence_service = Mock()
+    historical_service = Mock(
+        spec=HistoricalMarketDataService
+    )
+
+    request = HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            11,
+            0,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    cached_response = HistoricalMarketDataResponse(
+        symbol=GOLD_FUTURES.provider_symbol,
+        interval=MarketInterval.FIVE_MINUTES,
+        currency="USD",
+        candles=[],
+    )
+
+    historical_service.get_cached_response.return_value = (
+        cached_response
+    )
+
+    service = MarketDataService(
+        provider=provider,
+        instrument=GOLD_FUTURES,
+        persistence_service=persistence_service,
+        historical_service=historical_service,
+    )
+
+    result = service.get_historical_data(
+        request
+    )
+
+    assert result == cached_response
+
+    historical_service.get_cached_response.assert_called_once_with(
+        definition=GOLD_FUTURES,
+        request=request,
+    )
+
+    provider.get_historical_data.assert_not_called()
+    persistence_service.persist.assert_not_called()
+
+def test_market_service_fetches_and_persists_when_cache_empty():
+    provider = Mock()
+    persistence_service = Mock()
+    historical_service = Mock(
+        spec=HistoricalMarketDataService
+    )
+
+    request = HistoricalMarketDataRequest(
+        interval=MarketInterval.FIVE_MINUTES,
+        start_time=datetime(
+            2026,
+            7,
+            22,
+            10,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        end_time=datetime(
+            2026,
+            7,
+            22,
+            11,
+            0,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    provider_response = HistoricalMarketDataResponse(
+        symbol=GOLD_FUTURES.provider_symbol,
+        interval=MarketInterval.FIVE_MINUTES,
+        currency="USD",
+        candles=[],
+    )
+
+    historical_service.get_cached_response.return_value = (
+        None
+    )
+
+    provider.get_historical_data.return_value = (
+        provider_response
+    )
+
+    service = MarketDataService(
+        provider=provider,
+        instrument=GOLD_FUTURES,
+        persistence_service=persistence_service,
+        historical_service=historical_service,
+    )
+
+    result = service.get_historical_data(
+        request
+    )
+
+    assert result == provider_response
+
+    historical_service.get_cached_response.assert_called_once_with(
+        definition=GOLD_FUTURES,
+        request=request,
+    )
+
+    provider.get_historical_data.assert_called_once_with(
+        GOLD_FUTURES,
+        request,
+    )
+
+    persistence_service.persist.assert_called_once_with(
+        definition=GOLD_FUTURES,
+        response=provider_response,
     )

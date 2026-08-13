@@ -21,6 +21,9 @@ from app.repositories.market_candle_repository import (
 from app.services.historical_market_data_persistence_service import (
     HistoricalMarketDataPersistenceService,
 )
+from app.services.historical_market_data_service import (
+    HistoricalMarketDataService,
+)
 
 
 def get_database_engine() -> Engine:
@@ -66,12 +69,29 @@ def get_historical_persistence_service(
         candle_repository=candle_repository,
     )
 
+def get_historical_market_data_service(
+    instrument_repository: InstrumentRepository = Depends(
+        get_instrument_repository
+    ),
+    candle_repository: MarketCandleRepository = Depends(
+        get_market_candle_repository
+    ),
+) -> HistoricalMarketDataService:
+    return HistoricalMarketDataService(
+        instrument_repository=instrument_repository,
+        candle_repository=candle_repository,
+    )
+
 
 def create_market_data_service(
     instrument_code: str,
     instrument_service: InstrumentService,
     persistence_service: (
         HistoricalMarketDataPersistenceService
+        | None
+    ) = None,
+    historical_service: (
+        HistoricalMarketDataService
         | None
     ) = None,
 ) -> MarketDataService:
@@ -89,6 +109,7 @@ def create_market_data_service(
         provider=provider,
         instrument=definition,
         persistence_service=persistence_service,
+        historical_service=historical_service,
     )
 
 
@@ -102,6 +123,11 @@ def get_market_data_service(
     ) = Depends(
         get_historical_persistence_service
     ),
+    historical_service: (
+        HistoricalMarketDataService
+     ) = Depends(
+        get_historical_market_data_service
+    ),
 ) -> MarketDataService:
     try:
         return create_market_data_service(
@@ -110,6 +136,7 @@ def get_market_data_service(
             persistence_service=(
                 persistence_service
             ),
+            historical_service=historical_service,
         )
     except ValueError as error:
         raise HTTPException(
@@ -138,11 +165,17 @@ def get_gold_futures_historical_service(
     ) = Depends(
         get_historical_persistence_service
     ),
+    historical_service: (
+        HistoricalMarketDataService
+     ) = Depends(
+        get_historical_market_data_service
+    ),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="GOLD_FUTURES",
         instrument_service=instrument_service,
         persistence_service=persistence_service,
+        historical_service=historical_service,
     )
 
 def get_gold_spot_service(
@@ -165,11 +198,17 @@ def get_gold_spot_historical_service(
     ) = Depends(
         get_historical_persistence_service
     ),
+    historical_service: (
+        HistoricalMarketDataService
+     ) = Depends(
+        get_historical_market_data_service
+    ),
 ) -> MarketDataService:
     return create_market_data_service(
         instrument_code="XAUUSD",
         instrument_service=instrument_service,
         persistence_service=persistence_service,
+        historical_service=historical_service,
     )
 
 
